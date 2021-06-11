@@ -18,6 +18,7 @@ let interleavedQueues: Array<
   HookQueue<any, any> | ClassQueue<any>,
 > | null = null;
 
+// 把fiber.shared加进interleavedQueues中
 export function pushInterleavedQueue(
   queue: HookQueue<any, any> | ClassQueue<any>,
 ) {
@@ -28,6 +29,8 @@ export function pushInterleavedQueue(
   }
 }
 
+// interleavedQueues 中每一个元素都是fiber.shared
+// 执行时，将 interleaved 链表接在 pending 链表后面
 export function enqueueInterleavedUpdates() {
   // Transfer the interleaved updates onto the main queue. Each queue has a
   // `pending` field and an `interleaved` field. When they are not null, they

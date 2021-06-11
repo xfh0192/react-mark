@@ -386,9 +386,9 @@ export function requestUpdateLane(fiber: Fiber): Lane {
   if ((mode & ConcurrentMode) === NoMode) {
     return (SyncLane: Lane);
   } else if (
-    !deferRenderPhaseUpdateToNextBatch &&
-    (executionContext & RenderContext) !== NoContext &&
-    workInProgressRootRenderLanes !== NoLanes
+    !deferRenderPhaseUpdateToNextBatch && // 不延迟当前render阶段到下一个batch
+    (executionContext & RenderContext) !== NoContext && // 执行context包含 RenderContext
+    workInProgressRootRenderLanes !== NoLanes // workInProgressRootRenderLanes 非零
   ) {
     // This is a render phase update. These are not officially supported. The
     // old behavior is to give this the same "thread" (expiration time) as
@@ -399,6 +399,7 @@ export function requestUpdateLane(fiber: Fiber): Lane {
     // This behavior is only a fallback. The flag only exists until we can roll
     // out the setState warning, since existing code might accidentally rely on
     // the current behavior.
+    // 获取workInProgressRootRenderLanes中的最高级lane
     return pickArbitraryLane(workInProgressRootRenderLanes);
   }
 
@@ -435,6 +436,7 @@ export function requestUpdateLane(fiber: Fiber): Lane {
   // The opaque type returned by the host config is internally a lane, so we can
   // use that directly.
   // TODO: Move this type conversion to the event priority module.
+  // 正常情况下，等于 DefaultEventPriority
   const eventLane: Lane = (getCurrentEventPriority(): any);
   return eventLane;
 }
@@ -461,6 +463,8 @@ export function scheduleUpdateOnFiber(
   checkForNestedUpdates();
   warnAboutRenderPhaseUpdatesInDEV(fiber);
 
+  // 向 fiber.lanes, fiber.alternate.lanes 和所有父fiber.childLanes, 父fiber.alternate.childLanes 合并lane
+  // 最后返回 fiberRoot
   const root = markUpdateLaneFromFiberToRoot(fiber, lane);
   if (root === null) {
     warnAboutUpdateOnUnmountedFiberInDEV(fiber);
@@ -468,6 +472,7 @@ export function scheduleUpdateOnFiber(
   }
 
   // Mark that the root has a pending update.
+  // 在 rootFiber.pendingLanes, rootFiber.eventTimes 上面标记 updateLane, eventTime
   markRootUpdated(root, lane, eventTime);
 
   if (enableProfilerTimer && enableProfilerNestedUpdateScheduledHook) {
@@ -569,6 +574,7 @@ function markUpdateLaneFromFiberToRoot(
   lane: Lane,
 ): FiberRoot | null {
   // Update the source fiber's lanes
+  // 向 sourceFiber.lanes 和 sourceFiber.alternate.lanes 合并 lane
   sourceFiber.lanes = mergeLanes(sourceFiber.lanes, lane);
   let alternate = sourceFiber.alternate;
   if (alternate !== null) {
@@ -583,6 +589,7 @@ function markUpdateLaneFromFiberToRoot(
     }
   }
   // Walk the parent path to the root and update the child lanes.
+  // 向 sourceFiber 的所有父fiber.childLanes 合并lane
   let node = sourceFiber;
   let parent = sourceFiber.return;
   while (parent !== null) {
@@ -1575,6 +1582,7 @@ function performUnitOfWork(unitOfWork: Fiber): void {
   const current = unitOfWork.alternate;
   setCurrentDebugFiberInDEV(unitOfWork);
 
+  // 进行work
   let next;
   if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
     startProfilerTimer(unitOfWork);
@@ -1586,6 +1594,7 @@ function performUnitOfWork(unitOfWork: Fiber): void {
 
   resetCurrentDebugFiberInDEV();
   unitOfWork.memoizedProps = unitOfWork.pendingProps;
+  // 更新workInProgress，用于链表的循环工作
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
     completeUnitOfWork(unitOfWork);
@@ -1596,6 +1605,7 @@ function performUnitOfWork(unitOfWork: Fiber): void {
   ReactCurrentOwner.current = null;
 }
 
+// 生成effect-list 供commit阶段用
 function completeUnitOfWork(unitOfWork: Fiber): void {
   // Attempt to complete the current unit of work, then move to the next
   // sibling. If there are no more siblings, return to the parent fiber.
@@ -2113,6 +2123,7 @@ function flushPassiveEffectsImpl() {
   executionContext |= CommitContext;
   const prevInteractions = pushInteractions(root);
 
+  // 执行useEffect钩子的旧一轮unmount和新一轮的mount
   commitPassiveUnmountEffects(root.current);
   commitPassiveMountEffects(root, root.current);
 

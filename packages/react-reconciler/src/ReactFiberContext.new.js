@@ -307,6 +307,7 @@ function findCurrentUnmaskedContext(fiber: Fiber): Object {
         case ClassComponent: {
           const Component = node.type;
           if (isContextProvider(Component)) {
+            // node.stateNode fiber指向的组件实例
             return node.stateNode.__reactInternalMemoizedMergedChildContext;
           }
           break;

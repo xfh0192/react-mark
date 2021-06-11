@@ -478,6 +478,8 @@ export function claimNextRetryLane(): Lane {
   return lane;
 }
 
+// 只获取二进制最低位的1
+// 即：获取最高优先级
 export function getHighestPriorityLane(lanes: Lanes): Lane {
   return lanes & -lanes;
 }
@@ -544,6 +546,7 @@ export function markRootUpdated(
   updateLane: Lane,
   eventTime: number,
 ) {
+  // 将 updateLane 标记在 fiberRoot.pendingLanes
   root.pendingLanes |= updateLane;
 
   // If there are any suspended transitions, it's possible this new update
@@ -567,6 +570,7 @@ export function markRootUpdated(
   const index = laneToIndex(updateLane);
   // We can always overwrite an existing timestamp because we prefer the most
   // recent event, and we assume time is monotonically increasing.
+  // 在eventTimes[index]上记录eventTime
   eventTimes[index] = eventTime;
 }
 

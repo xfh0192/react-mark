@@ -224,7 +224,11 @@ export function enqueueUpdate<State>(
 
   const sharedQueue: SharedQueue<State> = (updateQueue: any).shared;
 
+  // 查看 fiber.mode 是否 Concurrent
   if (isInterleavedUpdate(fiber, lane)) {
+    // 支持并行，就将update加在interleaved上，
+    // 等待 packages\react-reconciler\src\ReactFiberInterleavedUpdates.new.js 触发
+    // 将interleaved链表加到pending上
     const interleaved = sharedQueue.interleaved;
     if (interleaved === null) {
       // This is the first update. Create a circular list.
@@ -238,6 +242,7 @@ export function enqueueUpdate<State>(
     }
     sharedQueue.interleaved = update;
   } else {
+    // 不支持，则直接将update加到pending链表后
     const pending = sharedQueue.pending;
     if (pending === null) {
       // This is the first update. Create a circular list.

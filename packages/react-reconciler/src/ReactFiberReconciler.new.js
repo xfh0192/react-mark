@@ -141,16 +141,24 @@ function getContextForSubtree(
     return emptyContextObject;
   }
 
+  // 通过组件获取当前活跃的fiber
   const fiber = getInstance(parentComponent);
+  // 通过fiber向上遍历，寻找最近的provider实例提供的context
+  // 找不到就返回到 HostRoot 上的context
+  // 再找不到提示错误
   const parentContext = findCurrentUnmaskedContext(fiber);
 
   if (fiber.tag === ClassComponent) {
     const Component = fiber.type;
+    // 检查是否是老版本react的api
+    // https://zh-hans.reactjs.org/docs/legacy-context.html#updating-context
+    // 即组件中是否提供了getChildContext方法提供context给子组件
     if (isLegacyContextProvider(Component)) {
       return processChildContext(fiber, Component, parentContext);
     }
   }
 
+  // 新版本的react，就直接用父组件provider的context
   return parentContext;
 }
 
@@ -268,6 +276,7 @@ export function updateContainer(
     onScheduleRoot(container, element);
   }
   const current = container.current;
+  // 获取从time origin到当前的时间(ms)
   const eventTime = requestEventTime();
   if (__DEV__) {
     // $FlowExpectedError - jest isn't a global, and isn't recognized outside of tests
@@ -276,12 +285,14 @@ export function updateContainer(
       warnIfNotScopedWithMatchingAct(current);
     }
   }
+  // 初次mount, NoLanes
   const lane = requestUpdateLane(current);
 
   if (enableSchedulingProfiler) {
     markRenderScheduled(lane);
   }
 
+  // 从父组件获取提供下来的context，注入到当前组件context中
   const context = getContextForSubtree(parentComponent);
   if (container.context === null) {
     container.context = context;
