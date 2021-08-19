@@ -485,6 +485,7 @@ export function processUpdateQueue<State>(
 
     // The pending queue is circular. Disconnect the pointer between first
     // and last so that it's non-circular.
+    // wip的queue，把pendingQueue接到baseUpdate后面，然后lastBaseUpdate指针指向pendingQueue尾
     const lastPendingUpdate = pendingQueue;
     const firstPendingUpdate = lastPendingUpdate.next;
     lastPendingUpdate.next = null;
@@ -501,6 +502,8 @@ export function processUpdateQueue<State>(
     // queue is a singly-linked list with no cycles, we can append to both
     // lists and take advantage of structural sharing.
     // TODO: Pass `current` as argument
+    // current的queue，把wip的pendingQueue接到baseUpdateQueue后面，然后lastBaseUpdate指针指向pendingQueue尾
+    // 相当于wip中的pendingQueue同步更新到current和wip的baseUpdateQueue后
     const current = workInProgress.alternate;
     if (current !== null) {
       // This is always non-null on a ClassComponent or HostRoot
@@ -525,6 +528,8 @@ export function processUpdateQueue<State>(
     // from the original lanes.
     let newLanes = NoLanes;
 
+    // base系列标记，记录当前updateQueue执行完之后，优先级不够的update上下文信息
+    // 方便更低优先级的processQueue触发时，继续执行
     let newBaseState = null;
     let newFirstBaseUpdate = null;
     let newLastBaseUpdate = null;
@@ -537,6 +542,9 @@ export function processUpdateQueue<State>(
         // Priority is insufficient. Skip this update. If this is the first
         // skipped update, the previous update/state is the new base
         // update/state.
+        // 这个update优先级不够，跳过。
+        // 如果这个update是第一个被跳过的update，那么newBaseUpdate指针指向它，state也作为newBaseState记录下来
+        // 如果不是第一个skipped update，那么将newLastBaseUpdate指向它
         const clone: Update<State> = {
           eventTime: updateEventTime,
           lane: updateLane,
@@ -557,13 +565,16 @@ export function processUpdateQueue<State>(
         newLanes = mergeLanes(newLanes, updateLane);
       } else {
         // This update does have sufficient priority.
+        // 当前update的优先级足够，则需要执行并且更新state
 
+        // 当已经出现过不够优先级的update时，则clone当前update并加在queue后面
         if (newLastBaseUpdate !== null) {
           const clone: Update<State> = {
             eventTime: updateEventTime,
             // This update is going to be committed so we never want uncommit
             // it. Using NoLane works because 0 is a subset of all bitmasks, so
             // this will never be skipped by the check above.
+            // 优先级定位0，name就是所有优先级的subset，之后就不可能跳过这个update
             lane: NoLane,
 
             tag: update.tag,
@@ -572,10 +583,13 @@ export function processUpdateQueue<State>(
 
             next: null,
           };
+          // 只有出现过优先级不足的update，才需要加入queue。没有出现过的时候，则直接在当前process执行掉udpate就可，不需要放到下一轮了
+          // 加在queue后面，保证之后执行低优先级时，queue不会漏掉update（因为update也要按顺序执行保证state的正确）
           newLastBaseUpdate = newLastBaseUpdate.next = clone;
         }
 
         // Process this update.
+        // 执行这个优先级足够的update
         newState = getStateFromUpdate(
           workInProgress,
           queue,
@@ -596,11 +610,15 @@ export function processUpdateQueue<State>(
         }
       }
       update = update.next;
+      // queue执行完
       if (update === null) {
         pendingQueue = queue.shared.pending;
+        // 如果pendingQueue也是空，则跳出循环，processUpdateQueue完成
         if (pendingQueue === null) {
           break;
         } else {
+          // 否则，将pendingQueue加进当前循环中的updateQueue，继续处理
+
           // An update was scheduled from inside a reducer. Add the new
           // pending updates to the end of the list and keep processing.
           const lastPendingUpdate = pendingQueue;
@@ -615,10 +633,14 @@ export function processUpdateQueue<State>(
       }
     } while (true);
 
+    // 没有newLastBaseUpdate表示updateQueue已经清空，newBaseState和newState一样
+    // 此时，newBaseState => 第一个优先级不足的update执行前的state
+    // newState => 所有优先级足够的update执行完后的state
     if (newLastBaseUpdate === null) {
       newBaseState = newState;
     }
-
+    
+    // 记录下一轮process的updateQueue和baseState
     queue.baseState = ((newBaseState: any): State);
     queue.firstBaseUpdate = newFirstBaseUpdate;
     queue.lastBaseUpdate = newLastBaseUpdate;
@@ -626,6 +648,8 @@ export function processUpdateQueue<State>(
     // Interleaved updates are stored on a separate queue. We aren't going to
     // process them during this render, but we do need to track which lanes
     // are remaining.
+    // Interleaved updates 存在一个独立的queue中，当前render不会process，但是需要跟踪这些update的lanes
+    // 遍历Interleaved updates链表，将所有lanes加入到newLanes
     const lastInterleaved = queue.shared.interleaved;
     if (lastInterleaved !== null) {
       let interleaved = lastInterleaved;
@@ -646,7 +670,12 @@ export function processUpdateQueue<State>(
     // dealt with the props. Context in components that specify
     // shouldComponentUpdate is tricky; but we'll have to account for
     // that regardless.
-    markSkippedUpdateLanes(newLanes);
+    // processQueue的时候，我们已经在beginWork阶段的中间
+    // 影响剩余时间的其他因素只剩props和context了，上面的处理过程已经处理了props，
+    // 而指定了shouldComponentUpdate的组件context是棘手的
+    // we'll have to account for that regardless => 但我们必须考虑这个问题（不能无视）
+    markSkippedUpdateLanes(newLanes); // 在模块ReactFiberWorkLoop.new.js 中保存newLanes
+    // 保存newLanes、newState
     workInProgress.lanes = newLanes;
     workInProgress.memoizedState = newState;
   }

@@ -66,8 +66,8 @@ var LOW_PRIORITY_TIMEOUT = 10000;
 var IDLE_PRIORITY_TIMEOUT = maxSigned31BitInt;
 
 // Tasks are stored on a min heap
-var taskQueue = [];
-var timerQueue = [];
+var taskQueue = []; // 存放到期任务（需要马上执行）
+var timerQueue = []; // 存放未到期任务（advanceTimers中将进行检查，发现到期任务将转移到taskQueue中）
 
 // Incrementing id counter. Used to maintain insertion order.
 var taskIdCounter = 1;
@@ -114,6 +114,7 @@ if (typeof console !== 'undefined') {
   }
 }
 
+// 检查timerQueue中是否存在到期任务，发现到期任务将转移到taskQueue中
 function advanceTimers(currentTime) {
   // Check for tasks that are no longer delayed and add them to the queue.
   let timer = peek(timerQueue);
@@ -125,7 +126,7 @@ function advanceTimers(currentTime) {
       // Timer fired. Transfer to the task queue.
       pop(timerQueue);
       timer.sortIndex = timer.expirationTime;
-      push(taskQueue, timer);
+      push(taskQueue, timer); // 发现到期任务将转移到taskQueue中
       if (enableProfiling) {
         markTaskStart(timer, currentTime);
         timer.isQueued = true;
@@ -222,6 +223,10 @@ function workLoop(hasTimeRemaining, initialTime) {
       }
       const continuationCallback = callback(didUserCallbackTimeout);
       currentTime = getCurrentTime();
+      // 根据任务返回值判断任务是否已完成
+      // 返回值是函数，表示未完成，将返回值重置放到callback中，等待下一次调度
+      // 否则，表示任务完成，pop出任务
+      // 另外，假如需要取消某个任务，则在cancelCallback中，可以看到是直接进行 task.callback = null 操作，那么在这里发现callback不是function，就会直接pop掉任务
       if (typeof continuationCallback === 'function') {
         currentTask.callback = continuationCallback;
         if (enableProfiling) {
@@ -449,6 +454,7 @@ let deadline = 0;
 const maxYieldInterval = 300;
 let needsPaint = false;
 
+// 判断时间片是否耗尽
 function shouldYieldToHost() {
   if (
     enableIsInputPending &&
@@ -521,6 +527,7 @@ const performWorkUntilDeadline = () => {
     // Yield after `yieldInterval` ms, regardless of where we are in the vsync
     // cycle. This means there's always time remaining at the beginning of
     // the message event.
+    // schedule调度任务前，设置deadline，用于每个任务节点完成后检查时间片是否耗尽
     deadline = currentTime + yieldInterval;
     const hasTimeRemaining = true;
 

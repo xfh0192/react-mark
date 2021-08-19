@@ -276,6 +276,13 @@ export function reconcileChildren(
 
     // If we had any progressed work already, that is invalid at this point so
     // let's throw it out.
+
+    // workInProgress：作为父节点传入，新生成的第一个fiber的return会被指向它。
+    // current.child：旧fiber节点，diff生成新fiber节点时会用新生成的ReactElement和它作比较。
+    // nextChildren：新生成的ReactElement，会以它为标准生成新的fiber节点。
+    // renderLanes：本次的渲染优先级，最终会被挂载到新fiber的lanes属性上。
+
+    // nextChildren是render()执行结果，并不是fiber，将会在协调中生成fiber
     workInProgress.child = reconcileChildFibers(
       workInProgress,
       current.child,
@@ -1006,6 +1013,7 @@ function updateClassComponent(
       renderLanes,
     );
   } else {
+    // 这里会执行cloneUpdateQueue、processUpdateQueue
     shouldUpdate = updateClassInstance(
       current,
       workInProgress,
@@ -1038,6 +1046,7 @@ function updateClassComponent(
   return nextUnitOfWork;
 }
 
+// 进行diff比对，更新child，打上effect-tag
 function finishClassComponent(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -1051,6 +1060,7 @@ function finishClassComponent(
 
   const didCaptureError = (workInProgress.flags & DidCapture) !== NoFlags;
 
+  // 不需更新，跳过
   if (!shouldUpdate && !didCaptureError) {
     // Context providers should defer to sCU for rendering
     if (hasContext) {
@@ -1060,6 +1070,7 @@ function finishClassComponent(
     return bailoutOnAlreadyFinishedWork(current, workInProgress, renderLanes);
   }
 
+  // 组件实例
   const instance = workInProgress.stateNode;
 
   // Rerender
@@ -1157,6 +1168,7 @@ function updateHostRoot(current, workInProgress, renderLanes) {
   const prevState = workInProgress.memoizedState;
   const prevChildren = prevState.element;
   cloneUpdateQueue(current, workInProgress);
+  // 执行wip中的update，更新到最终的newState
   processUpdateQueue(workInProgress, nextProps, null, renderLanes);
   const nextState = workInProgress.memoizedState;
 
@@ -3252,7 +3264,8 @@ function beginWork(
 
     const oldProps = current.memoizedProps;
     const newProps = workInProgress.pendingProps;
-
+    
+    // 以下部分为检查props是否有更新，并作出标记 didReceiveUpdate
     if (
       oldProps !== newProps ||
       hasLegacyContextChanged() ||
@@ -3263,6 +3276,7 @@ function beginWork(
       // This may be unset if the props are determined to be equal later (memo).
       didReceiveUpdate = true;
     } else if (!includesSomeLane(renderLanes, updateLanes)) {
+      // 当前要更新的renderLanes中，没有wip的updateLanes，直接跳过
       didReceiveUpdate = false;
       // This fiber does not have any pending work. Bailout without entering
       // the begin phase. There's still some bookkeeping we that needs to be done
