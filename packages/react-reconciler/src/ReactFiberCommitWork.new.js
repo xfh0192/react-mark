@@ -370,6 +370,7 @@ function commitBeforeMutationEffects_begin() {
     if (deletions !== null) {
       for (let i = 0; i < deletions.length; i++) {
         const deletion = deletions[i];
+        // delete触发前，dispatch一个beforeblur事件
         commitBeforeMutationEffectsDeletion(deletion);
       }
     }
@@ -483,6 +484,7 @@ function commitBeforeMutationEffectsOnFiber(finishedWork: Fiber) {
               }
             }
           }
+          // 调用class组件的getSnapshotBeforeUpdate生命周期函数
           const snapshot = instance.getSnapshotBeforeUpdate(
             finishedWork.elementType === finishedWork.type
               ? prevProps
@@ -1509,6 +1511,7 @@ function isHostParent(fiber: Fiber): boolean {
   );
 }
 
+// 返回用于insertBefore的before真实dom节点
 function getHostSibling(fiber: Fiber): ?Instance {
   // We're going to search forward into the tree until we find a sibling host
   // node. Unfortunately, if multiple insertions are done in a row we have to
@@ -1521,12 +1524,21 @@ function getHostSibling(fiber: Fiber): ?Instance {
       if (node.return === null || isHostParent(node.return)) {
         // If we pop out of the root or hit the parent the fiber we are the
         // last sibling.
+        // 代码执行到这里说明没有兄弟节点，并且新节点的父节点为DOM节点，
+        // 那么它将作为唯一的节点，插入父节点
         return null;
       }
+      // 如果父节点不为null且不是原生DOM节点，那么继续往上找
       node = node.return;
     }
+    // 首先从兄弟节点里找基准节点
     node.sibling.return = node.return;
     node = node.sibling;
+
+    // 如果node不是以下三种类型的节点，说明肯定不是基准节点，
+    // 因为基准节点的要求是DOM节点
+    // 会一直循环到node为dom类型的fiber为止。
+    // 一旦进入循环，此时的node必然不是最开始是传进来的fiber
     while (
       node.tag !== HostComponent &&
       node.tag !== HostText &&
@@ -1536,13 +1548,19 @@ function getHostSibling(fiber: Fiber): ?Instance {
       // Try to search down until we find one.
       if (node.flags & Placement) {
         // If we don't have a child, try the siblings instead.
+        // 如果这个节点也要被插入，继续siblings循环，找它的基准节点
         continue siblings;
       }
       // If we don't have a child, try the siblings instead.
       // We also skip portals because they are not part of this host tree.
       if (node.child === null || node.tag === HostPortal) {
+        // node无子节点，或者遇到了HostPortal节点，继续siblings循环，
+        // 找它的基准节点。
+        // 注意，此时会再进入siblings循环，循环的开始，也就是上边的代码
+        // 会判断这个节点有没有siblings，没有就向上找，有就从siblings里找。
         continue siblings;
       } else {
+        // 过滤不出来原生DOM节点，但它有子节点，就继续往下找。
         node.child.return = node;
         node = node.child;
       }
@@ -1550,11 +1568,14 @@ function getHostSibling(fiber: Fiber): ?Instance {
     // Check if this host node is stable or about to be placed.
     if (!(node.flags & Placement)) {
       // Found it!
+      // 过滤出原生DOM节点了，并且这个节点不需要动，
+      // stateNode就作为基准节点返回
       return node.stateNode;
     }
   }
 }
 
+// 插入
 function commitPlacement(finishedWork: Fiber): void {
   if (!supportsMutation) {
     return;
@@ -1595,6 +1616,7 @@ function commitPlacement(finishedWork: Fiber): void {
     parentFiber.flags &= ~ContentReset;
   }
 
+  // 找一个有dom的sibling节点，没有就向上一层找（为了调用insertBefore）
   const before = getHostSibling(finishedWork);
   // We only have the top Fiber that was inserted but we need to recurse down its
   // children to find all the terminal nodes.
@@ -1636,6 +1658,7 @@ function insertOrAppendPlacementNodeIntoContainer(
   }
 }
 
+// 真实插入dom方法
 function insertOrAppendPlacementNode(
   node: Fiber,
   before: ?Instance,
@@ -1686,6 +1709,7 @@ function unmountHostComponents(
 
   while (true) {
     if (!currentParentIsValid) {
+      // 首先找到一个拥有dom的祖先fiber
       let parent = node.return;
       findParent: while (true) {
         invariant(

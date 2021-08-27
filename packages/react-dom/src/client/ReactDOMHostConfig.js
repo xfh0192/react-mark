@@ -305,6 +305,7 @@ export function appendInitialChild(
   parentInstance.appendChild(child);
 }
 
+// 设置dom节点初始属性、事件
 export function finalizeInitialChildren(
   domElement: Instance,
   type: string,

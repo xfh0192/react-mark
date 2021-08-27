@@ -648,15 +648,22 @@ export function diffProperties(
   let propKey;
   let styleName;
   let styleUpdates = null;
+  // lastProps中存在，nextProps中不存在，将propKey的value标记为null表示删除
+  // lastProps中不存在，nextProps中存在，将nextProps中的propKey和对应的value添加到updatePayload
+  // lastProps中存在，nextProps中也存在，将nextProps中的propKey和对应的value添加到updatePayload
   for (propKey in lastProps) {
+    // 循环lastProps，找出需要标记删除的propKey
     if (
       nextProps.hasOwnProperty(propKey) ||
       !lastProps.hasOwnProperty(propKey) ||
       lastProps[propKey] == null
     ) {
+      // 对propKey来说，如果nextProps也有，或者lastProps没有，那么
+      // 就不需要标记为删除，跳出本次循环继续判断下一个propKey
       continue;
     }
     if (propKey === STYLE) {
+      // 删除style
       const lastStyle = lastProps[propKey];
       for (styleName in lastStyle) {
         if (lastStyle.hasOwnProperty(styleName)) {
@@ -667,6 +674,7 @@ export function diffProperties(
         }
       }
     } else if (propKey === DANGEROUSLY_SET_INNER_HTML || propKey === CHILDREN) {
+      // 一些特定种类的propKey的删除
       // Noop. This is handled by the clear text mechanism.
     } else if (
       propKey === SUPPRESS_CONTENT_EDITABLE_WARNING ||
@@ -683,18 +691,22 @@ export function diffProperties(
         updatePayload = [];
       }
     } else {
+      // 将其他种类的propKey标记为删除
       // For all other deleted properties we add it to the queue. We use
       // the allowed property list in the commit phase instead.
       (updatePayload = updatePayload || []).push(propKey, null);
     }
   }
   for (propKey in nextProps) {
+    // 将新prop添加到updatePayload
     const nextProp = nextProps[propKey];
     const lastProp = lastProps != null ? lastProps[propKey] : undefined;
     if (
       !nextProps.hasOwnProperty(propKey) ||
       nextProp === lastProp ||
       (nextProp == null && lastProp == null)
+      // 如果nextProps不存在propKey，或者前后的value相同，或者前后的value都为null
+      // 那么不需要添加进去，跳出本次循环继续处理下一个prop
     ) {
       continue;
     }
@@ -706,8 +718,17 @@ export function diffProperties(
           Object.freeze(nextProp);
         }
       }
+      /*
+      * lastProp: { color: 'red' }
+      * nextProp: { color: 'blue' }
+      * */
+      // 如果style在lastProps和nextProps中都有
+      // 那么需要删除lastProps中style的样式
       if (lastProp) {
         // Unset styles on `lastProp` but not on `nextProp`.
+        // 如果lastProps中也有style
+        // 将style内的样式属性设置为空
+        // styleUpdates = { color: '' }
         for (styleName in lastProp) {
           if (
             lastProp.hasOwnProperty(styleName) &&
@@ -720,6 +741,8 @@ export function diffProperties(
           }
         }
         // Update styles that changed since `lastProp`.
+        // 以nextProp的属性名为key设置新的style的value
+        // styleUpdates = { color: 'blue' }
         for (styleName in nextProp) {
           if (
             nextProp.hasOwnProperty(styleName) &&
@@ -733,15 +756,20 @@ export function diffProperties(
         }
       } else {
         // Relies on `updateStylesByID` not mutating `styleUpdates`.
+        // 如果lastProps中没有style，说明新增的
+        // 属性全部可放入updatePayload
         if (!styleUpdates) {
           if (!updatePayload) {
             updatePayload = [];
           }
+          // updatePayload: [ style, null ]
           updatePayload.push(propKey, styleUpdates);
         }
+        // styleUpdates = { color: 'blue' }
         styleUpdates = nextProp;
       }
     } else if (propKey === DANGEROUSLY_SET_INNER_HTML) {
+      // 一些特定种类的propKey的处理
       const nextHtml = nextProp ? nextProp[HTML] : undefined;
       const lastHtml = lastProp ? lastProp[HTML] : undefined;
       if (nextHtml != null) {
@@ -762,6 +790,7 @@ export function diffProperties(
     ) {
       // Noop
     } else if (registrationNameDependencies.hasOwnProperty(propKey)) {
+      // 重新绑定事件
       if (nextProp != null) {
         // We eagerly listen to this even though we haven't committed yet.
         if (__DEV__ && typeof nextProp !== 'function') {
@@ -772,6 +801,7 @@ export function diffProperties(
         }
       }
       if (!updatePayload && lastProp !== nextProp) {
+        // 事件重新绑定后，需要赋值updatePayload，使这个节点得以被更新
         // This is a special case. If any listener updates we need to ensure
         // that the "current" props pointer gets updated so we need a commit
         // to update this element.
@@ -782,11 +812,13 @@ export function diffProperties(
       nextProp !== null &&
       nextProp.$$typeof === REACT_OPAQUE_ID_TYPE
     ) {
+      // 服务端渲染相关
       // If we encounter useOpaqueReference's opaque object, this means we are hydrating.
       // In this case, call the opaque object's toString function which generates a new client
       // ID so client and server IDs match and throws to rerender.
       nextProp.toString();
     } else {
+      // 将计算好的属性push到updatePayload
       // For any other property we always add it to the queue and then we
       // filter it out using the allowed property list during the commit.
       (updatePayload = updatePayload || []).push(propKey, nextProp);
@@ -796,6 +828,7 @@ export function diffProperties(
     if (__DEV__) {
       validateShorthandPropertyCollisionInDev(styleUpdates, nextProps[STYLE]);
     }
+    // 将style和值push进updatePayload
     (updatePayload = updatePayload || []).push(STYLE, styleUpdates);
   }
   return updatePayload;

@@ -1613,6 +1613,7 @@ function performUnitOfWork(unitOfWork: Fiber): void {
   setCurrentDebugFiberInDEV(unitOfWork);
 
   // 进行work
+  // beginWork自上而下处理
   let next;
   if (enableProfilerTimer && (unitOfWork.mode & ProfileMode) !== NoMode) {
     startProfilerTimer(unitOfWork);
@@ -1627,6 +1628,7 @@ function performUnitOfWork(unitOfWork: Fiber): void {
   // 更新workInProgress，用于链表的循环工作
   if (next === null) {
     // If this doesn't spawn new work, complete the current work.
+    // completeWork 自下而上处理，将出现sibling和returenFiber的处理
     completeUnitOfWork(unitOfWork);
   } else {
     workInProgress = next;
@@ -1650,12 +1652,14 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
 
     // Check if the work completed or if something threw.
     if ((completedWork.flags & Incomplete) === NoFlags) {
+      // 如果workInProgress节点没有出错，走正常的complete流程
       setCurrentDebugFiberInDEV(completedWork);
       let next;
       if (
         !enableProfilerTimer ||
         (completedWork.mode & ProfileMode) === NoMode
       ) {
+        // 对节点进行completeWork，生成DOM，更新props，绑定事件
         next = completeWork(current, completedWork, subtreeRenderLanes);
       } else {
         startProfilerTimer(completedWork);
@@ -1666,6 +1670,7 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
       resetCurrentDebugFiberInDEV();
 
       if (next !== null) {
+        // 任务被挂起的情况，
         // Completing this fiber spawned new work. Work on that next.
         workInProgress = next;
         return;
@@ -1713,6 +1718,7 @@ function completeUnitOfWork(unitOfWork: Fiber): void {
       }
     }
 
+    // 若发现sibling则重新回去beginWork处理
     const siblingFiber = completedWork.sibling;
     if (siblingFiber !== null) {
       // If there is more work to do in this returnFiber, do that next.
@@ -1748,7 +1754,13 @@ function commitRoot(root) {
   return null;
 }
 
+// commit 分三个阶段
+// before mutation：读取组件变更前的状态，针对类组件，调用getSnapshotBeforeUpdate，让我们可以在DOM变更前获取组件实例的信息；针对函数组件，异步调度useEffect。
+// mutation：针对HostComponent，进行相应的DOM操作；针对类组件，调用componentWillUnmount；针对函数组件，执行useLayoutEffect的销毁函数。
+// layout：在DOM操作完成后，读取组件的状态，针对类组件，调用生命周期componentDidMount和componentDidUpdate，调用setState的回调；针对函数组件填充useEffect 的 effect执行数组，并调度useEffect
+
 function commitRootImpl(root, renderPriorityLevel) {
+  // 进入commit阶段，先执行一次之前未执行的useEffect
   do {
     // `flushPassiveEffects` will call `flushSyncUpdateQueue` at the end, which
     // means `flushPassiveEffects` will sometimes result in additional
@@ -1760,6 +1772,8 @@ function commitRootImpl(root, renderPriorityLevel) {
   } while (rootWithPendingPassiveEffects !== null);
   flushRenderPhaseStrictModeWarningsInDEV();
 
+  // 准备阶段-----------------------------------------------
+  
   invariant(
     (executionContext & (RenderContext | CommitContext)) === NoContext,
     'Should not already be working.',
@@ -1807,7 +1821,9 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // Update the first and last pending times on this root. The new first
   // pending time is whatever is left on the root fiber.
+  // 获取尚未处理的优先级，比如之前被跳过的任务的优先级
   let remainingLanes = mergeLanes(finishedWork.lanes, finishedWork.childLanes);
+  // 将被跳过的优先级放到root上的pendingLanes（待处理的优先级）上
   markRootFinished(root, remainingLanes);
 
   if (root === workInProgressRoot) {
@@ -1838,6 +1854,8 @@ function commitRootImpl(root, renderPriorityLevel) {
       });
     }
   }
+
+  
 
   // Check if there are any effects in the whole tree.
   // TODO: This is left over from the effect list implementation, where we had
@@ -1870,9 +1888,13 @@ function commitRootImpl(root, renderPriorityLevel) {
     // of the effect list for each phase: all mutation effects come before all
     // layout effects, and so on.
 
+    // before mutation阶段--------------------------------
+    
     // The first phase a "before mutation" phase. We use this phase to read the
     // state of the host tree right before we mutate it. This is where
     // getSnapshotBeforeUpdate is called.
+    // getSnapshotBeforeUpdate() 在最近一次渲染输出（提交到 DOM 节点）之前调用。
+    // 它使得组件能在发生更改之前从 DOM 中捕获一些信息（例如，滚动位置）。此生命周期方法的任何返回值将作为参数传递给 componentDidUpdate()。
     const shouldFireAfterActiveInstanceBlur = commitBeforeMutationEffects(
       root,
       finishedWork,
@@ -1890,6 +1912,8 @@ function commitRootImpl(root, renderPriorityLevel) {
       rootCommittingMutationOrLayoutEffects = root;
     }
 
+    // mutation阶段---------------------------------------
+    // mutation阶段会真正操作DOM节点，涉及到的操作有增、删、改。入口函数是commitMutationEffects
     // The next phase is the mutation phase, where we mutate the host tree.
     commitMutationEffects(root, finishedWork);
 
@@ -1898,11 +1922,15 @@ function commitRootImpl(root, renderPriorityLevel) {
     }
     resetAfterCommit(root.containerInfo);
 
+    // 将wprkInProgress树切换为current树
+
     // The work-in-progress tree is now the current tree. This must come after
     // the mutation phase, so that the previous tree is still current during
     // componentWillUnmount, but before the layout phase, so that the finished
     // work is current during componentDidMount/Update.
     root.current = finishedWork;
+
+    // layout阶段-----------------------------------------
 
     // The next phase is the layout phase, where we call effects that read
     // the host tree after it's been mutated. The idiomatic use case for this is
@@ -1930,6 +1958,8 @@ function commitRootImpl(root, renderPriorityLevel) {
       rootCommittingMutationOrLayoutEffects = null;
     }
 
+    // 通知浏览器去绘制
+    
     // Tell Scheduler to yield at the end of the frame, so the browser has an
     // opportunity to paint.
     requestPaint();
@@ -2029,6 +2059,12 @@ function commitRootImpl(root, renderPriorityLevel) {
 
   // Always call this before exiting `commitRoot`, to ensure that any
   // additional work on this root is scheduled.
+  /*
+  * 每次commit阶段完成后，再执行一遍ensureRootIsScheduled，确保是否还有任务需要被调度。
+  * 例如，高优先级插队的更新完成后，commit完成后，还会再执行一遍，保证之前跳过的低优先级任务
+  * 重新调度
+  *
+  * */
   ensureRootIsScheduled(root, now());
 
   if (hasUncaughtError) {

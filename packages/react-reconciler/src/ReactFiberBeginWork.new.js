@@ -1001,7 +1001,7 @@ function updateClassComponent(
       workInProgress.flags |= Placement;
     }
     // In the initial pass we might need to construct the instance.
-    constructClassInstance(workInProgress, Component, nextProps);
+    constructClassInstance(workInProgress, Component, nextProps); // 实例化组件，挂载到fiber.stateNode上
     mountClassInstance(workInProgress, Component, nextProps, renderLanes);
     shouldUpdate = true;
   } else if (current === null) {
@@ -1022,6 +1022,7 @@ function updateClassComponent(
       renderLanes,
     );
   }
+  // 进行diff比对，更新child，打上effect-tag
   const nextUnitOfWork = finishClassComponent(
     current,
     workInProgress,

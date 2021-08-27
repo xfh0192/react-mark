@@ -196,6 +196,7 @@ let updateHostText;
 if (supportsMutation) {
   // Mutation mode
 
+  // 向下收集真实dom，插入到parent下面
   appendAllChildren = function(
     parent: Instance,
     workInProgress: Fiber,
@@ -234,6 +235,7 @@ if (supportsMutation) {
   updateHostContainer = function(current: null | Fiber, workInProgress: Fiber) {
     // Noop
   };
+  // 更新dom节点属性、事件
   updateHostComponent = function(
     current: Fiber,
     workInProgress: Fiber,
@@ -244,6 +246,7 @@ if (supportsMutation) {
     // If we have an alternate, that means this is an update and we need to
     // schedule a side-effect to do the updates.
     const oldProps = current.memoizedProps;
+    // 新旧props相同，不更新
     if (oldProps === newProps) {
       // In mutation mode, this is sufficient for a bailout because
       // we won't touch this node even if children changed.
@@ -259,6 +262,9 @@ if (supportsMutation) {
     // TODO: Experiencing an error where oldProps is null. Suggests a host
     // component is hitting the resume path. Figure out why. Possibly
     // related to `hidden`.
+    // prepareUpdate计算新属性
+    // 可以看出它只做了一件事，就是计算新的属性，并挂载到workInProgress节点的updateQueue中，它的形式是以2为单位，index为偶数的是key，为奇数的是value：
+    // [ 'style', { color: 'blue' }, title, '测试标题' ]
     const updatePayload = prepareUpdate(
       instance,
       type,
@@ -268,10 +274,14 @@ if (supportsMutation) {
       currentHostContext,
     );
     // TODO: Type this specific to this type of component.
+    // 最终新属性被挂载到updateQueue中，供commit阶段使用
     workInProgress.updateQueue = (updatePayload: any);
     // If the update payload indicates that there is a change or if there
     // is a new ref we mark this as an update. All the work is done in commitWork.
+    // DOM节点属性的diff为workInProgress节点挂载了带有新属性的updateQueue，
+    // 一旦节点的updateQueue不为空，它就会被标记上Update的effectTag，commit阶段会处理updateQueue。
     if (updatePayload) {
+      // 标记workInProgress节点有更新
       markUpdate(workInProgress);
     }
   };
@@ -784,6 +794,7 @@ function bubbleProperties(completedWork: Fiber) {
   return didBailout;
 }
 
+// render阶段，beginWork更新完fiber和diff之后的completeWork
 function completeWork(
   current: Fiber | null,
   workInProgress: Fiber,
@@ -852,6 +863,7 @@ function completeWork(
       const rootContainerInstance = getRootHostContainer();
       const type = workInProgress.type;
       if (current !== null && workInProgress.stateNode != null) {
+        // 更新
         updateHostComponent(
           current,
           workInProgress,
@@ -864,6 +876,7 @@ function completeWork(
           markRef(workInProgress);
         }
       } else {
+        // 创建
         if (!newProps) {
           invariant(
             workInProgress.stateNode !== null,
@@ -896,6 +909,8 @@ function completeWork(
             markUpdate(workInProgress);
           }
         } else {
+          // createInstance 是平台方法，去reactDom中找
+          // 真实dom
           const instance = createInstance(
             type,
             newProps,
@@ -903,15 +918,18 @@ function completeWork(
             currentHostContext,
             workInProgress,
           );
-
+          
+          // 收集子DOM节点插入
           appendAllChildren(instance, workInProgress, false, false);
 
+          // 将DOM节点挂载到fiber的stateNode上
           workInProgress.stateNode = instance;
 
           // Certain renderers require commit-time effects for initial mount.
           // (eg DOM renderer supports auto-focus for certain elements).
           // Make sure such renderers get scheduled for later work.
           if (
+            // DOM节点属性的初始化
             finalizeInitialChildren(
               instance,
               type,
@@ -920,6 +938,8 @@ function completeWork(
               currentHostContext,
             )
           ) {
+            // 最终会依据textarea的autoFocus属性
+            // 来决定是否更新fiber
             markUpdate(workInProgress);
           }
         }
@@ -929,6 +949,7 @@ function completeWork(
           markRef(workInProgress);
         }
       }
+      // 这个方法应该是收集effectList的，这个版本的effectList改为了subtreeFlags和childLanes
       bubbleProperties(workInProgress);
       return null;
     }

@@ -812,7 +812,7 @@ function ChildReconciler(shouldTrackSideEffects) {
         }
       }
       // 更新固定节点（原地不动节点）位置，用于对每个newFiber进行位置比对，
-      // 发现newFiber对应的oldFiber位置在当前位置的前面时，在flags标记增加Placement，表示位置移动
+      // 发现newFiber对应的oldFiber位置在当前位置的前面时，在flags标记增加Placement，表示位置移动(oldFiber需要向后面移动)
       lastPlacedIndex = placeChild(newFiber, lastPlacedIndex, newIdx);
 
       // 维护新fiber链表
@@ -1256,6 +1256,7 @@ function ChildReconciler(shouldTrackSideEffects) {
     // Handle top level unkeyed fragments as if they were arrays.
     // This leads to an ambiguity between <>{[...]}</> and <>...</>.
     // We treat the ambiguous cases above the same.
+    // fragment 的时候，porps.children就是newChild
     const isUnkeyedTopLevelFragment =
       typeof newChild === 'object' &&
       newChild !== null &&
